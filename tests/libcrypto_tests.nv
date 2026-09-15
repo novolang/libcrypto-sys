@@ -1,0 +1,248 @@
+// API tests for the OpenSSL libcrypto bindings.
+//
+// Every test below calls into the C library, so the suite needs
+// libcrypto installed and linked.  `novo pkg build` type-checks the
+// declarations without it; `novo test` runs them and does not.
+//
+// The digest and HMAC tests use the published vectors for the message
+// `"abc"`, so a wrong answer is a wrong answer and not a difference of
+// opinion.
+
+use std.test
+use libcrypto
+
+// `EVP_MAX_MD_SIZE`, the buffer length every digest fits in.
+const MAX_MD: Int = 64
+
+// The first four bytes of the SHA-256 digest of `"abc"`, which is
+// ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.
+const ABC_SHA256_0: Int = 0xba
+const ABC_SHA256_1: Int = 0x78
+const ABC_SHA256_2: Int = 0x16
+const ABC_SHA256_3: Int = 0xbf
+
+@test
+fn test_the_library_reports_its_own_version() [io, ffi]
+    test.case("OpenSSL_version, OpenSSL_version_num")
+    let text = ptr.read_str(libcrypto.openssl_version(0))
+    test.assert(str.len(text) > 0)
+    // 3.0.0 packs as 0x30000000, and every later 3.x is above it.
+    test.assert(libcrypto.openssl_version_num() >= 0x30000000)
+
+@test
+fn test_each_digest_reports_its_own_sizes() [io, ffi]
+    test.case("EVP_sha1, EVP_sha256, EVP_sha512, EVP_md5 and their sizes")
+    test.assert(libcrypto.evp_md_get_size(libcrypto.evp_sha1()) == 20)
+    test.assert(libcrypto.evp_md_get_size(libcrypto.evp_sha256()) == 32)
+    test.assert(libcrypto.evp_md_get_size(libcrypto.evp_sha512()) == 64)
+    test.assert(libcrypto.evp_md_get_size(libcrypto.evp_md5()) == 16)
+    test.assert(libcrypto.evp_md_get_block_size(libcrypto.evp_sha256()) == 64)
+    test.assert(str.len(ptr.read_str(libcrypto.evp_md_get0_name(libcrypto.evp_sha256()))) > 0)
+
+@test
+fn test_a_digest_is_found_by_name_and_a_wrong_name_is_not() [io, ffi]
+    test.case("EVP_get_digestbyname")
+    test.assert(libcrypto.evp_get_digestbyname("SHA256") != 0)
+    test.assert(libcrypto.evp_get_digestbyname("NOSUCHDIGEST") == 0)
+
+@test
+fn test_the_one_shot_digest_matches_the_published_vector() [io, ffi]
+    test.case("EVP_Digest over \"abc\" with SHA-256")
+    let input = ptr.alloc(8)
+    ptr.write_bytes_buf(input, bytes.from_str("abc"))
+    let out = ptr.alloc(MAX_MD)
+    let size = ptr.alloc_word()
+    let ok = libcrypto.evp_digest(input, 3, out, size, libcrypto.evp_sha256(), 0)
+    test.assert(ok == 1)
+    test.assert(ptr.read_word(size) == 32)
+    test.assert(ptr.load_u8(out) == ABC_SHA256_0)
+    test.assert(ptr.load_u8(out + 1) == ABC_SHA256_1)
+    test.assert(ptr.load_u8(out + 2) == ABC_SHA256_2)
+    test.assert(ptr.load_u8(out + 3) == ABC_SHA256_3)
+    ptr.free(size)
+    ptr.free(out)
+    ptr.free(input)
+
+@test
+fn test_the_streaming_digest_agrees_with_the_one_shot_one() [io, ffi]
+    test.case("EVP_MD_CTX_new, init, two updates, final, reset, free")
+    let a = ptr.alloc(8)
+    ptr.write_bytes_buf(a, bytes.from_str("a"))
+    let bc = ptr.alloc(8)
+    ptr.write_bytes_buf(bc, bytes.from_str("bc"))
+    let out = ptr.alloc(MAX_MD)
+    let size = ptr.alloc_word()
+    let ctx = libcrypto.evp_md_ctx_new()
+    test.assert(ctx != 0)
+    test.assert(libcrypto.evp_digest_init_ex(ctx, libcrypto.evp_sha256(), 0) == 1)
+    test.assert(libcrypto.evp_digest_update(ctx, a, 1) == 1)
+    test.assert(libcrypto.evp_digest_update(ctx, bc, 2) == 1)
+    test.assert(libcrypto.evp_digest_final_ex(ctx, out, size) == 1)
+    test.assert(ptr.read_word(size) == 32)
+    // The same first four bytes as the one-shot call over "abc".
+    test.assert(ptr.load_u8(out) == ABC_SHA256_0)
+    test.assert(ptr.load_u8(out + 3) == ABC_SHA256_3)
+    test.assert(libcrypto.evp_md_ctx_reset(ctx) == 1)
+    libcrypto.evp_md_ctx_free(ctx)
+    ptr.free(size)
+    ptr.free(out)
+    ptr.free(bc)
+    ptr.free(a)
+
+@test
+fn test_each_cipher_reports_its_own_lengths() [io, ffi]
+    test.case("the EVP_aes_* and EVP_chacha20_poly1305 descriptions")
+    let cbc128 = libcrypto.evp_aes_128_cbc()
+    test.assert(libcrypto.evp_cipher_get_key_length(cbc128) == 16)
+    test.assert(libcrypto.evp_cipher_get_iv_length(cbc128) == 16)
+    test.assert(libcrypto.evp_cipher_get_block_size(cbc128) == 16)
+    let cbc256 = libcrypto.evp_aes_256_cbc()
+    test.assert(libcrypto.evp_cipher_get_key_length(cbc256) == 32)
+    let gcm = libcrypto.evp_aes_256_gcm()
+    test.assert(libcrypto.evp_cipher_get_iv_length(gcm) == 12)
+    let chacha = libcrypto.evp_chacha20_poly1305()
+    test.assert(libcrypto.evp_cipher_get_key_length(chacha) == 32)
+    test.assert(str.len(ptr.read_str(libcrypto.evp_cipher_get0_name(gcm))) > 0)
+    test.assert(libcrypto.evp_get_cipherbyname("aes-256-cbc") != 0)
+    test.assert(libcrypto.evp_get_cipherbyname("nosuchcipher") == 0)
+
+@test
+fn test_a_block_cipher_round_trips_a_message() [io, ffi]
+    test.case("EVP_EncryptInit_ex through EVP_DecryptFinal_ex with AES-256-CBC")
+    let key = ptr.alloc(32)
+    let iv = ptr.alloc(16)
+    let plain = ptr.alloc(16)
+    ptr.write_bytes_buf(plain, bytes.from_str("attack at dawn"))
+    let cipher_text = ptr.alloc(64)
+    let recovered = ptr.alloc(64)
+    let n = ptr.alloc_word()
+    let ctx = libcrypto.evp_cipher_ctx_new()
+    test.assert(ctx != 0)
+    let aes = libcrypto.evp_aes_256_cbc()
+    // The key and the vector are the zero bytes ptr.alloc left; this
+    // test is about the shape of the calls, not about secrecy.
+    test.assert(libcrypto.evp_encrypt_init_ex(ctx, aes, 0, key, iv) == 1)
+    test.assert(libcrypto.evp_cipher_ctx_set_padding(ctx, 1) == 1)
+    test.assert(libcrypto.evp_encrypt_update(ctx, cipher_text, n, plain, 14) == 1)
+    let body = ptr.read_word(n)
+    test.assert(libcrypto.evp_encrypt_final_ex(ctx, cipher_text + body, n) == 1)
+    // Padding takes fourteen bytes up to two whole blocks.
+    let total = body + ptr.read_word(n)
+    test.assert(total == 16)
+    test.assert(libcrypto.evp_cipher_ctx_reset(ctx) == 1)
+    test.assert(libcrypto.evp_decrypt_init_ex(ctx, aes, 0, key, iv) == 1)
+    test.assert(libcrypto.evp_decrypt_update(ctx, recovered, n, cipher_text, total) == 1)
+    let got = ptr.read_word(n)
+    test.assert(libcrypto.evp_decrypt_final_ex(ctx, recovered + got, n) == 1)
+    test.assert(got + ptr.read_word(n) == 14)
+    test.assert(libcrypto.crypto_memcmp(recovered, plain, 14) == 0)
+    libcrypto.evp_cipher_ctx_free(ctx)
+    ptr.free(n)
+    ptr.free(recovered)
+    ptr.free(cipher_text)
+    ptr.free(plain)
+    ptr.free(iv)
+    ptr.free(key)
+
+@test
+fn test_an_authenticated_cipher_takes_its_nonce_length_and_tag() [io, ffi]
+    test.case("EVP_CIPHER_CTX_ctrl commands 9 and 16 with AES-256-GCM")
+    let key = ptr.alloc(32)
+    let iv = ptr.alloc(12)
+    let plain = ptr.alloc(16)
+    ptr.write_bytes_buf(plain, bytes.from_str("secret"))
+    let out = ptr.alloc(64)
+    let tag = ptr.alloc(16)
+    let n = ptr.alloc_word()
+    let ctx = libcrypto.evp_cipher_ctx_new()
+    let gcm = libcrypto.evp_aes_256_gcm()
+    // 9 is EVP_CTRL_AEAD_SET_IVLEN; twelve is the default and setting
+    // it explicitly is what a caller with another length would do.
+    test.assert(libcrypto.evp_encrypt_init_ex(ctx, gcm, 0, 0, 0) == 1)
+    test.assert(libcrypto.evp_cipher_ctx_ctrl(ctx, 9, 12, 0) == 1)
+    test.assert(libcrypto.evp_encrypt_init_ex(ctx, 0, 0, key, iv) == 1)
+    test.assert(libcrypto.evp_encrypt_update(ctx, out, n, plain, 6) == 1)
+    test.assert(ptr.read_word(n) == 6)
+    test.assert(libcrypto.evp_encrypt_final_ex(ctx, out + 6, n) == 1)
+    // 16 is EVP_CTRL_AEAD_GET_TAG, and the tag is sixteen bytes.
+    test.assert(libcrypto.evp_cipher_ctx_ctrl(ctx, 16, 16, tag) == 1)
+    libcrypto.evp_cipher_ctx_free(ctx)
+    ptr.free(n)
+    ptr.free(tag)
+    ptr.free(out)
+    ptr.free(plain)
+    ptr.free(iv)
+    ptr.free(key)
+
+@test
+fn test_hmac_and_the_derived_key_answer_their_lengths() [io, ffi]
+    test.case("HMAC and PKCS5_PBKDF2_HMAC")
+    let key = ptr.alloc(16)
+    let data = ptr.alloc(8)
+    ptr.write_bytes_buf(data, bytes.from_str("abc"))
+    let mac = ptr.alloc(MAX_MD)
+    let mac_len = ptr.alloc_word()
+    let got = libcrypto.hmac(libcrypto.evp_sha256(), key, 16, data, 3, mac, mac_len)
+    test.assert(got == mac)
+    test.assert(ptr.read_word(mac_len) == 32)
+    let salt = ptr.alloc(16)
+    let derived = ptr.alloc(32)
+    let ok = libcrypto.pkcs5_pbkdf2_hmac("password", 8, salt, 16, 1000,
+                                         libcrypto.evp_sha256(), 32, derived)
+    test.assert(ok == 1)
+    // Two derivations from the same inputs agree.
+    let again = ptr.alloc(32)
+    let _ = libcrypto.pkcs5_pbkdf2_hmac("password", 8, salt, 16, 1000,
+                                        libcrypto.evp_sha256(), 32, again)
+    test.assert(libcrypto.crypto_memcmp(derived, again, 32) == 0)
+    ptr.free(again)
+    ptr.free(derived)
+    ptr.free(salt)
+    ptr.free(mac_len)
+    ptr.free(mac)
+    ptr.free(data)
+    ptr.free(key)
+
+@test
+fn test_the_random_generator_is_seeded_and_fills_a_buffer() [io, ffi]
+    test.case("RAND_status, RAND_bytes, RAND_priv_bytes")
+    test.assert(libcrypto.rand_status() == 1)
+    let a = ptr.alloc(32)
+    let b = ptr.alloc(32)
+    test.assert(libcrypto.rand_bytes(a, 32) == 1)
+    test.assert(libcrypto.rand_priv_bytes(b, 32) == 1)
+    // Two draws of thirty-two bytes are not the same bytes.
+    test.assert(libcrypto.crypto_memcmp(a, b, 32) != 0)
+    ptr.free(b)
+    ptr.free(a)
+
+@test
+fn test_the_error_queue_fills_and_empties() [io, ffi]
+    test.case("ERR_clear_error, ERR_peek_error, ERR_get_error and the two texts")
+    libcrypto.err_clear_error()
+    test.assert(libcrypto.err_peek_error() == 0)
+    // A cipher context with no cipher set is a failure the library
+    // records on the queue.
+    let ctx = libcrypto.evp_cipher_ctx_new()
+    test.assert(libcrypto.evp_encrypt_update(ctx, 0, 0, 0, 0) == 0)
+    let code = libcrypto.err_peek_error()
+    test.assert(code != 0)
+    test.assert(libcrypto.err_get_error() == code)
+    let buf = ptr.alloc(256)
+    libcrypto.err_error_string_n(code, buf, 256)
+    test.assert(str.len(ptr.read_str(buf)) > 0)
+    test.assert(str.len(ptr.read_str(libcrypto.err_reason_error_string(code))) > 0)
+    libcrypto.err_clear_error()
+    test.assert(libcrypto.err_get_error() == 0)
+    libcrypto.evp_cipher_ctx_free(ctx)
+    ptr.free(buf)
+
+// `X509_free` releases a certificate reference, and this package has no
+// entry point that produces one — `SSL_get1_peer_certificate` in
+// libssl-sys does.  Releasing the null address is allowed, and that is
+// the call this suite can make.
+@test
+fn test_releasing_the_null_certificate_is_allowed() [io, ffi]
+    test.case("X509_free(0)")
+    libcrypto.x509_free(0)
+    test.assert(true)

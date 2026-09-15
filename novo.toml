@@ -1,0 +1,44 @@
+[package]
+name        = "libcrypto-sys"
+version     = "0.1.0"
+description = "Bindings over OpenSSL libcrypto, the cryptographic primitives: message digests, symmetric ciphers, HMAC, key derivation, random bytes, the error queue and the library version, one declaration per C entry point."
+license     = "Apache-2.0"
+
+# NOT a `0.0.x` draft.  An interface release is the shape whose every
+# `pub fn` body is a `todo()`, and every `pub fn` here is an `@ffi`
+# declaration with no body at all — `novo pkg publish` reads that as a
+# release with bodies and refuses a `0.0.x` version for it.
+stability   = "experimental"
+
+# `sys`: the layer for a package that binds one C library and decides
+# nothing of its own.  Every `pub fn` below is an `@ffi` declaration of
+# a function in libcrypto.
+layer       = "sys"
+
+category    = "bindings"
+
+# The one C library.  `libcrypto.so` is the primitives half of OpenSSL.
+# `libssl.so` is the TLS protocol, a different library with a different
+# API, and none of the symbols below are in it.  Installing this
+# package installs neither.
+wraps       = "libcrypto"
+
+tags        = ["ffi", "openssl", "crypto", "digest", "cipher", "bindings"]
+repository  = "https://github.com/novolang/libcrypto-sys"
+maintainers = ["novo-lang"]
+novo        = ">= 0.8.9"
+
+[docs.pages]
+"README.md" = "The C entry points of OpenSSL libcrypto, one novo-lang declaration each"
+
+[dependencies]
+# None.  A binding over one C library depends on no novo-lang package.
+
+# The link flag for the `library = "crypto"` name every declaration in
+# `src/` carries.  `libssl-dev` installs
+# `/usr/lib/<arch>/pkgconfig/libcrypto.pc`, so pkg-config answers
+# `-lcrypto` on Debian and Ubuntu.  Without the block the default is
+# `-lcrypto`, which is the same flag on a system that put the library
+# somewhere the linker already looks.
+[ffi.crypto]
+pkg_config = "libcrypto"

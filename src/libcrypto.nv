@@ -1,0 +1,380 @@
+// The C entry points of OpenSSL libcrypto, one novo-lang declaration
+// each.
+//
+// A pointer is an `Int`: the C API hands out opaque handles for the
+// digest context, the cipher context, the algorithm descriptions and
+// the certificate, and this module carries each of them as the address
+// the C library returned.  Zero is the null pointer, which is how every
+// allocating entry point below reports failure.
+//
+// A buffer is an address and a length, never a novo-lang value.  The
+// caller reserves the bytes with `ptr.alloc`, writes them with
+// `ptr.write_bytes_buf` and reads them back with `ptr.read_bytes_n`.
+// An `unsigned char *` and a `void *` are both just an address here.
+//
+// An out-parameter is the address of a slot the caller owns.  A C
+// `unsigned int *` or `int *` length slot is eight bytes from
+// `ptr.alloc_word`, of which libcrypto writes the low four.
+//
+// Every entry point that takes an `ENGINE *` takes 0 for the default
+// implementation.  Engines are the superseded plugin mechanism, and
+// OpenSSL 3.0 answers the same algorithm for 0.
+
+// Create a digest context, the object that holds the state of a hash
+// in progress.
+//
+// Answers 0 when the allocation failed.
+pub @ffi(library = "crypto", symbol = "EVP_MD_CTX_new")
+fn evp_md_ctx_new() -> Int [ffi]
+
+// Release a digest context.
+//
+// Releasing the null address is allowed and does nothing.
+pub @ffi(library = "crypto", symbol = "EVP_MD_CTX_free")
+fn evp_md_ctx_free(ctx: Int) [ffi]
+
+// Clear a digest context so it can be used for another hash.
+//
+// Answers 1 on success.  The context keeps its allocation, so this is
+// cheaper than freeing it and creating another.
+pub @ffi(library = "crypto", symbol = "EVP_MD_CTX_reset")
+fn evp_md_ctx_reset(ctx: Int) -> Int [ffi]
+
+// Start a hash in a digest context.
+//
+// `md` is an address one of the digest entry points answered, and
+// `engine` is 0.  Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "EVP_DigestInit_ex")
+fn evp_digest_init_ex(ctx: Int, md: Int, engine: Int) -> Int [ffi]
+
+// Add `count` bytes at `data` to the hash in progress.
+//
+// Answers 1 on success.  Any number of calls may be made, and the
+// result is the hash of the bytes in the order they were added.
+pub @ffi(library = "crypto", symbol = "EVP_DigestUpdate")
+fn evp_digest_update(ctx: Int, data: Int, count: Int) -> Int [ffi]
+
+// Finish the hash and write the digest.
+//
+// `md_out` is the address of a buffer of at least `EVP_MAX_MD_SIZE`
+// (64) bytes.  The number of bytes written is written to the slot at
+// `size_out` as a 32-bit integer; pass 0 to discard it.  Answers 1 on
+// success.  The context may not be updated again until it is reset.
+pub @ffi(library = "crypto", symbol = "EVP_DigestFinal_ex")
+fn evp_digest_final_ex(ctx: Int, md_out: Int, size_out: Int) -> Int [ffi]
+
+// Hash one buffer in a single call.
+//
+// `data` and `count` are the input, `md_out` and `size_out` are those
+// of `EVP_DigestFinal_ex`, `md` is the algorithm and `engine` is 0.
+// Answers 1 on success.  This allocates and frees a context of its own.
+pub @ffi(library = "crypto", symbol = "EVP_Digest")
+fn evp_digest(data: Int, count: Int, md_out: Int, size_out: Int, md: Int, engine: Int) -> Int [ffi]
+
+// Get the description of SHA-1.
+//
+// The answer is the address of a static structure the library owns.
+// SHA-1 is broken for collision resistance and is here for protocols
+// that still specify it.
+pub @ffi(library = "crypto", symbol = "EVP_sha1")
+fn evp_sha1() -> Int [ffi]
+
+// Get the description of SHA-256.
+//
+// The answer is the address of a static structure the library owns.
+pub @ffi(library = "crypto", symbol = "EVP_sha256")
+fn evp_sha256() -> Int [ffi]
+
+// Get the description of SHA-512.
+//
+// The answer is the address of a static structure the library owns.
+pub @ffi(library = "crypto", symbol = "EVP_sha512")
+fn evp_sha512() -> Int [ffi]
+
+// Get the description of MD5.
+//
+// The answer is the address of a static structure the library owns.
+// MD5 is broken and is here for protocols that still specify it.
+pub @ffi(library = "crypto", symbol = "EVP_md5")
+fn evp_md5() -> Int [ffi]
+
+// Look a digest up by name.
+//
+// `name` is a name such as `"SHA256"` or `"sha256"`.  Answers 0 when
+// no digest of that name is available.
+pub @ffi(library = "crypto", symbol = "EVP_get_digestbyname")
+fn evp_get_digestbyname(name: Str) -> Int [ffi]
+
+// Get the length of a digest's output in bytes.
+//
+// SHA-256 answers 32 and SHA-512 answers 64.
+pub @ffi(library = "crypto", symbol = "EVP_MD_get_size")
+fn evp_md_get_size(md: Int) -> Int [ffi]
+
+// Get the length of a digest's internal block in bytes.
+//
+// SHA-256 answers 64.  This is the block length HMAC pads a key to.
+pub @ffi(library = "crypto", symbol = "EVP_MD_get_block_size")
+fn evp_md_get_block_size(md: Int) -> Int [ffi]
+
+// Get the name of a digest.
+//
+// The answer is the address of a string the library owns, such as
+// `"SHA2-256"`.
+pub @ffi(library = "crypto", symbol = "EVP_MD_get0_name")
+fn evp_md_get0_name(md: Int) -> Int [ffi]
+
+// Create a cipher context, the object that holds the state of an
+// encryption or decryption in progress.
+//
+// Answers 0 when the allocation failed.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_CTX_new")
+fn evp_cipher_ctx_new() -> Int [ffi]
+
+// Release a cipher context.
+//
+// The key and the initialisation vector inside it are cleared first.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_CTX_free")
+fn evp_cipher_ctx_free(ctx: Int) [ffi]
+
+// Clear a cipher context so it can be used again.
+//
+// Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_CTX_reset")
+fn evp_cipher_ctx_reset(ctx: Int) -> Int [ffi]
+
+// Send a control command to a cipher context.
+//
+// `cmd` is the command number, `arg` its integer argument and `p` the
+// address of its pointer argument.  Command 9,
+// `EVP_CTRL_AEAD_SET_IVLEN`, sets the nonce length of an authenticated
+// cipher.  Command 16, `EVP_CTRL_AEAD_GET_TAG`, copies the tag out
+// after encryption, and command 17, `EVP_CTRL_AEAD_SET_TAG`, supplies
+// it before decryption.  Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_CTX_ctrl")
+fn evp_cipher_ctx_ctrl(ctx: Int, cmd: Int, arg: Int, p: Int) -> Int [ffi]
+
+// Turn padding on or off for a block cipher.
+//
+// `pad` is 1 for on, which is the default, and 0 for off.  With
+// padding off the input length must be a whole number of blocks.
+// Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_CTX_set_padding")
+fn evp_cipher_ctx_set_padding(ctx: Int, pad: Int) -> Int [ffi]
+
+// Start an encryption in a cipher context.
+//
+// `cipher` is an address one of the cipher entry points answered,
+// `engine` is 0, and `key` and `iv` are addresses of buffers of the
+// cipher's own key and initialisation vector lengths.  Answers 1 on
+// success.  Passing 0 for `cipher` keeps the one already set and
+// changes only the key or the vector.
+pub @ffi(library = "crypto", symbol = "EVP_EncryptInit_ex")
+fn evp_encrypt_init_ex(ctx: Int, cipher: Int, engine: Int, key: Int, iv: Int) -> Int [ffi]
+
+// Encrypt `in_len` bytes at `in_buf` into the buffer at `out_buf`.
+//
+// The number of bytes written is written to the slot at `out_len` as a
+// 32-bit integer.  The output buffer must have room for `in_len` plus
+// the cipher's block length minus one.  Answers 1 on success.  For an
+// authenticated cipher, passing 0 for `out_buf` supplies additional
+// authenticated data instead of plaintext.
+pub @ffi(library = "crypto", symbol = "EVP_EncryptUpdate")
+fn evp_encrypt_update(ctx: Int, out_buf: Int, out_len: Int, in_buf: Int, in_len: Int) -> Int [ffi]
+
+// Finish an encryption and write whatever the padding added.
+//
+// The number of bytes written is written to the slot at `out_len`.
+// With padding on this is one whole block; with padding off it is
+// zero.  Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "EVP_EncryptFinal_ex")
+fn evp_encrypt_final_ex(ctx: Int, out_buf: Int, out_len: Int) -> Int [ffi]
+
+// Start a decryption in a cipher context.
+//
+// The arguments are those of `EVP_EncryptInit_ex`.
+pub @ffi(library = "crypto", symbol = "EVP_DecryptInit_ex")
+fn evp_decrypt_init_ex(ctx: Int, cipher: Int, engine: Int, key: Int, iv: Int) -> Int [ffi]
+
+// Decrypt `in_len` bytes at `in_buf` into the buffer at `out_buf`.
+//
+// The arguments are those of `EVP_EncryptUpdate`.
+pub @ffi(library = "crypto", symbol = "EVP_DecryptUpdate")
+fn evp_decrypt_update(ctx: Int, out_buf: Int, out_len: Int, in_buf: Int, in_len: Int) -> Int [ffi]
+
+// Finish a decryption, check the padding, and check the tag.
+//
+// Answers 1 when the plaintext is complete and, for an authenticated
+// cipher, when the tag matched.  Answers 0 when it did not, and in
+// that case the plaintext already written must be discarded.
+pub @ffi(library = "crypto", symbol = "EVP_DecryptFinal_ex")
+fn evp_decrypt_final_ex(ctx: Int, out_buf: Int, out_len: Int) -> Int [ffi]
+
+// Get the description of AES-128 in cipher block chaining mode.
+//
+// The answer is the address of a static structure the library owns.
+// The key is 16 bytes and the initialisation vector is 16 bytes.
+pub @ffi(library = "crypto", symbol = "EVP_aes_128_cbc")
+fn evp_aes_128_cbc() -> Int [ffi]
+
+// Get the description of AES-256 in cipher block chaining mode.
+//
+// The key is 32 bytes and the initialisation vector is 16 bytes.
+pub @ffi(library = "crypto", symbol = "EVP_aes_256_cbc")
+fn evp_aes_256_cbc() -> Int [ffi]
+
+// Get the description of AES-256 in Galois/counter mode.
+//
+// The key is 32 bytes and the nonce is 12 bytes by default.  This is an
+// authenticated cipher: it produces a tag the decryption must be given,
+// and a nonce may never be used twice with one key.
+pub @ffi(library = "crypto", symbol = "EVP_aes_256_gcm")
+fn evp_aes_256_gcm() -> Int [ffi]
+
+// Get the description of ChaCha20-Poly1305.
+//
+// The key is 32 bytes and the nonce is 12 bytes.  This is an
+// authenticated cipher, with the same rule about the nonce.
+pub @ffi(library = "crypto", symbol = "EVP_chacha20_poly1305")
+fn evp_chacha20_poly1305() -> Int [ffi]
+
+// Look a cipher up by name.
+//
+// `name` is a name such as `"aes-256-gcm"`.  Answers 0 when no cipher
+// of that name is available.
+pub @ffi(library = "crypto", symbol = "EVP_get_cipherbyname")
+fn evp_get_cipherbyname(name: Str) -> Int [ffi]
+
+// Get the length of a cipher's key in bytes.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_get_key_length")
+fn evp_cipher_get_key_length(cipher: Int) -> Int [ffi]
+
+// Get the length of a cipher's initialisation vector in bytes.
+//
+// Answers 0 for a cipher that takes none.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_get_iv_length")
+fn evp_cipher_get_iv_length(cipher: Int) -> Int [ffi]
+
+// Get the length of a cipher's block in bytes.
+//
+// A stream cipher answers 1.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_get_block_size")
+fn evp_cipher_get_block_size(cipher: Int) -> Int [ffi]
+
+// Get the name of a cipher.
+//
+// The answer is the address of a string the library owns, such as
+// `"AES-256-GCM"`.
+pub @ffi(library = "crypto", symbol = "EVP_CIPHER_get0_name")
+fn evp_cipher_get0_name(cipher: Int) -> Int [ffi]
+
+// Compute a keyed message authentication code in a single call.
+//
+// `md` is the digest, `key` and `key_len` the key, `data` and
+// `data_len` the message, and `md_out` a buffer of at least 64 bytes.
+// The length written is written to the slot at `md_len_out`; pass 0 to
+// discard it.  The answer is the address of `md_out`, or 0 on failure.
+pub @ffi(library = "crypto", symbol = "HMAC")
+fn hmac(md: Int, key: Int, key_len: Int, data: Int, data_len: Int, md_out: Int,
+        md_len_out: Int) -> Int [ffi]
+
+// Derive a key from a password, as PKCS #5 specifies.
+//
+// `password` is the password and `pass_len` its length in bytes, or a
+// negative number to read up to the terminator.  `salt` and `salt_len`
+// are the salt, `iter` the iteration count, `md` the digest, and
+// `key_len` and `out` the key to produce.  Answers 1 on success.
+pub @ffi(library = "crypto", symbol = "PKCS5_PBKDF2_HMAC")
+fn pkcs5_pbkdf2_hmac(password: Str, pass_len: Int, salt: Int, salt_len: Int, iter: Int, md: Int,
+                     key_len: Int, out: Int) -> Int [ffi]
+
+// Fill `num` bytes at `buf` with cryptographically secure random bytes.
+//
+// Answers 1 on success and 0 when the generator has not been seeded or
+// has failed.  A 0 must never be treated as though the buffer holds
+// random bytes.
+pub @ffi(library = "crypto", symbol = "RAND_bytes")
+fn rand_bytes(buf: Int, num: Int) -> Int [io, ffi]
+
+// Fill `num` bytes at `buf` from the private random generator.
+//
+// The answers are those of `RAND_bytes`.  This generator is for values
+// that are never published, such as a key, and it is kept separate so
+// that an attacker who sees public random values learns nothing about
+// it.
+pub @ffi(library = "crypto", symbol = "RAND_priv_bytes")
+fn rand_priv_bytes(buf: Int, num: Int) -> Int [io, ffi]
+
+// Ask whether the random generator has been seeded.
+//
+// Answers 1 when it has.
+pub @ffi(library = "crypto", symbol = "RAND_status")
+fn rand_status() -> Int [io, ffi]
+
+// Take the oldest error off the thread's error queue.
+//
+// Answers the error code, and 0 when the queue is empty.  The entry is
+// removed, so a second call answers the next one.
+pub @ffi(library = "crypto", symbol = "ERR_get_error")
+fn err_get_error() -> Int [ffi]
+
+// Read the oldest error without taking it off the queue.
+//
+// Answers the error code, and 0 when the queue is empty.
+pub @ffi(library = "crypto", symbol = "ERR_peek_error")
+fn err_peek_error() -> Int [ffi]
+
+// Write the text for an error code into a buffer.
+//
+// `buf` is the address of a buffer of `len` bytes, and 256 is the
+// length the reference recommends.  The text is truncated to fit and is
+// always terminated.
+pub @ffi(library = "crypto", symbol = "ERR_error_string_n")
+fn err_error_string_n(code: Int, buf: Int, len: Int) [ffi]
+
+// Get the reason part of an error code, as text.
+//
+// The answer is the address of a static string the library owns, or 0
+// when the code names no known reason.
+pub @ffi(library = "crypto", symbol = "ERR_reason_error_string")
+fn err_reason_error_string(code: Int) -> Int [ffi]
+
+// Empty the thread's error queue.
+//
+// A caller checks the queue after a failure, so it clears the queue
+// before the call it is about to check.
+pub @ffi(library = "crypto", symbol = "ERR_clear_error")
+fn err_clear_error() [ffi]
+
+// Compare `len` bytes at `a` with `len` bytes at `b` in constant time.
+//
+// Answers 0 when they are equal.  The time taken does not depend on
+// where the first difference is, which is what makes this the call to
+// compare a message authentication code with.
+pub @ffi(library = "crypto", symbol = "CRYPTO_memcmp")
+fn crypto_memcmp(a: Int, b: Int, len: Int) -> Int [ffi]
+
+// Get one of the library's version strings.
+//
+// `t` selects which: 0 is the version, 1 the compiler flags, 2 the
+// build date, 3 the platform, 4 the directory OpenSSL was configured
+// with, 5 the engines directory, 6 the version as text without the
+// word OpenSSL, and 7 the modules directory.  The answer is the
+// address of a static string.
+pub @ffi(library = "crypto", symbol = "OpenSSL_version")
+fn openssl_version(t: Int) -> Int [ffi]
+
+// Get the version of the library as a number.
+//
+// The value packs the major, minor and patch numbers into one integer:
+// 3.0.13 answers 0x30000d0f.
+pub @ffi(library = "crypto", symbol = "OpenSSL_version_num")
+fn openssl_version_num() -> Int [ffi]
+
+// Release a certificate.
+//
+// The certificate is reference counted, and this drops one reference.
+// It is here because `SSL_get1_peer_certificate` in libssl takes a
+// reference the caller must drop, and this is the call that drops it.
+pub @ffi(library = "crypto", symbol = "X509_free")
+fn x509_free(cert: Int) [ffi]
