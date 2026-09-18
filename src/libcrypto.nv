@@ -1,11 +1,11 @@
 // The C entry points of OpenSSL libcrypto, one novo-lang declaration
 // each.
 //
-// A pointer is an `Int`: the C API hands out opaque handles for the
+// A pointer is an `Int`.  The C API hands out opaque handles for the
 // digest context, the cipher context, the algorithm descriptions and
 // the certificate, and this module carries each of them as the address
-// the C library returned.  Zero is the null pointer, which is how every
-// allocating entry point below reports failure.
+// the C library returned.  Zero is the null pointer, and that is how
+// every allocating entry point below reports failure.
 //
 // A buffer is an address and a length, never a novo-lang value.  The
 // caller reserves the bytes with `ptr.alloc`, writes them with
@@ -35,8 +35,8 @@ fn evp_md_ctx_free(ctx: Int) [ffi]
 
 // Clear a digest context so it can be used for another hash.
 //
-// Answers 1 on success.  The context keeps its allocation, so this is
-// cheaper than freeing it and creating another.
+// Answers 1 on success.  The context itself stays allocated, and
+// `EVP_DigestInit_ex` starts the next hash in it.
 pub @ffi(library = "crypto", symbol = "EVP_MD_CTX_reset")
 fn evp_md_ctx_reset(ctx: Int) -> Int [ffi]
 
@@ -58,8 +58,9 @@ fn evp_digest_update(ctx: Int, data: Int, count: Int) -> Int [ffi]
 //
 // `md_out` is the address of a buffer of at least `EVP_MAX_MD_SIZE`
 // (64) bytes.  The number of bytes written is written to the slot at
-// `size_out` as a 32-bit integer; pass 0 to discard it.  Answers 1 on
-// success.  The context may not be updated again until it is reset.
+// `size_out` as a 32-bit integer.  Pass 0 for `size_out` to discard
+// that count.  Answers 1 on success.  The context takes no further
+// update until `EVP_DigestInit_ex` starts another hash in it.
 pub @ffi(library = "crypto", symbol = "EVP_DigestFinal_ex")
 fn evp_digest_final_ex(ctx: Int, md_out: Int, size_out: Int) -> Int [ffi]
 
@@ -120,7 +121,8 @@ fn evp_md_get_block_size(md: Int) -> Int [ffi]
 // Get the name of a digest.
 //
 // The answer is the address of a string the library owns, such as
-// `"SHA2-256"`.
+// `"SHA256"` for `EVP_sha256`.  The name is the short name of the
+// algorithm's object identifier.
 pub @ffi(library = "crypto", symbol = "EVP_MD_get0_name")
 fn evp_md_get0_name(md: Int) -> Int [ffi]
 
@@ -185,8 +187,9 @@ fn evp_encrypt_update(ctx: Int, out_buf: Int, out_len: Int, in_buf: Int, in_len:
 // Finish an encryption and write whatever the padding added.
 //
 // The number of bytes written is written to the slot at `out_len`.
-// With padding on this is one whole block; with padding off it is
-// zero.  Answers 1 on success.
+// A block cipher with padding on writes one whole block here.  With
+// padding off, and for a cipher whose block length is 1, it writes
+// nothing.  Answers 1 on success.
 pub @ffi(library = "crypto", symbol = "EVP_EncryptFinal_ex")
 fn evp_encrypt_final_ex(ctx: Int, out_buf: Int, out_len: Int) -> Int [ffi]
 
@@ -225,9 +228,9 @@ fn evp_aes_256_cbc() -> Int [ffi]
 
 // Get the description of AES-256 in Galois/counter mode.
 //
-// The key is 32 bytes and the nonce is 12 bytes by default.  This is an
-// authenticated cipher: it produces a tag the decryption must be given,
-// and a nonce may never be used twice with one key.
+// The key is 32 bytes and the nonce is 12 bytes by default.  This is
+// an authenticated cipher.  It produces a tag the decryption must be
+// given, and a nonce may never be used twice with one key.
 pub @ffi(library = "crypto", symbol = "EVP_aes_256_gcm")
 fn evp_aes_256_gcm() -> Int [ffi]
 
@@ -264,35 +267,40 @@ fn evp_cipher_get_block_size(cipher: Int) -> Int [ffi]
 // Get the name of a cipher.
 //
 // The answer is the address of a string the library owns, such as
-// `"AES-256-GCM"`.
+// `"AES-256-CBC"` for `EVP_aes_256_cbc`.  The name is the one the
+// object table carries, so `EVP_aes_256_gcm` answers `"id-aes256-GCM"`
+// rather than `"AES-256-GCM"`.
 pub @ffi(library = "crypto", symbol = "EVP_CIPHER_get0_name")
 fn evp_cipher_get0_name(cipher: Int) -> Int [ffi]
 
 // Compute a keyed message authentication code in a single call.
 //
 // `md` is the digest, `key` and `key_len` the key, `data` and
-// `data_len` the message, and `md_out` a buffer of at least 64 bytes.
-// The length written is written to the slot at `md_len_out`; pass 0 to
-// discard it.  The answer is the address of `md_out`, or 0 on failure.
+// `data_len` the message, and `md_out` a buffer of at least
+// `EVP_MAX_MD_SIZE` (64) bytes.  The length written is written to the
+// slot at `md_len_out`.  Pass 0 for `md_len_out` to discard that
+// count.  The answer is the address of `md_out`, or 0 on failure.
 pub @ffi(library = "crypto", symbol = "HMAC")
 fn hmac(md: Int, key: Int, key_len: Int, data: Int, data_len: Int, md_out: Int,
         md_len_out: Int) -> Int [ffi]
 
 // Derive a key from a password, as PKCS #5 specifies.
 //
-// `password` is the password and `pass_len` its length in bytes, or a
-// negative number to read up to the terminator.  `salt` and `salt_len`
-// are the salt, `iter` the iteration count, `md` the digest, and
-// `key_len` and `out` the key to produce.  Answers 1 on success.
+// `password` is the password and `pass_len` its length in bytes.  Pass
+// -1 for `pass_len` to use the length up to the terminator.  Any other
+// negative length answers 0.  `salt` and `salt_len` are the salt,
+// `iter` the iteration count, `md` the digest, and `key_len` and `out`
+// the key to produce.  Answers 1 on success.
 pub @ffi(library = "crypto", symbol = "PKCS5_PBKDF2_HMAC")
 fn pkcs5_pbkdf2_hmac(password: Str, pass_len: Int, salt: Int, salt_len: Int, iter: Int, md: Int,
                      key_len: Int, out: Int) -> Int [ffi]
 
 // Fill `num` bytes at `buf` with cryptographically secure random bytes.
 //
-// Answers 1 on success and 0 when the generator has not been seeded or
-// has failed.  A 0 must never be treated as though the buffer holds
-// random bytes.
+// Answers 1 on success.  Answers 0 when the generator has not been
+// seeded or has otherwise failed, and -1 when the random method in use
+// does not support the call.  An answer other than 1 leaves the buffer
+// without random bytes in it.
 pub @ffi(library = "crypto", symbol = "RAND_bytes")
 fn rand_bytes(buf: Int, num: Int) -> Int [io, ffi]
 
@@ -356,18 +364,22 @@ fn crypto_memcmp(a: Int, b: Int, len: Int) -> Int [ffi]
 
 // Get one of the library's version strings.
 //
-// `t` selects which: 0 is the version, 1 the compiler flags, 2 the
-// build date, 3 the platform, 4 the directory OpenSSL was configured
-// with, 5 the engines directory, 6 the version as text without the
-// word OpenSSL, and 7 the modules directory.  The answer is the
-// address of a static string.
+// `t` selects which string.  0 is the version, 1 the compiler flags, 2
+// the build date, 3 the platform, 4 the directory OpenSSL was
+// configured with, and 5 the engines directory.  6 is the release
+// version alone, such as `"3.0.13"`, and 7 is that version with any
+// pre-release and build metadata on it.  8 is the modules directory
+// and 9 the processor information.  The answer is the address of a
+// static string.
 pub @ffi(library = "crypto", symbol = "OpenSSL_version")
 fn openssl_version(t: Int) -> Int [ffi]
 
 // Get the version of the library as a number.
 //
-// The value packs the major, minor and patch numbers into one integer:
-// 3.0.13 answers 0x30000d0f.
+// The value packs the major, minor and patch numbers into one integer.
+// The layout is `0xMNN00PP0`, with the major number in `M`, the minor
+// number in `NN` and the patch number in `PP`.  3.0.13 answers
+// 0x300000d0.
 pub @ffi(library = "crypto", symbol = "OpenSSL_version_num")
 fn openssl_version_num() -> Int [ffi]
 

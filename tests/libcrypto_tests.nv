@@ -1,12 +1,13 @@
-// API tests for the OpenSSL libcrypto bindings.
+// Tests over the OpenSSL libcrypto entry points.
 //
 // Every test below calls into the C library, so the suite needs
 // libcrypto installed and linked.  `novo pkg build` type-checks the
-// declarations without it; `novo test` runs them and does not.
+// declarations without the library.  `novo test` runs them and needs
+// it.
 //
-// The digest and HMAC tests use the published vectors for the message
-// `"abc"`, so a wrong answer is a wrong answer and not a difference of
-// opinion.
+// The digest tests assert the published SHA-256 digest of the message
+// `"abc"`.  The other tests assert what the C API answers on the
+// arguments they pass.
 
 use std.test
 use libcrypto
@@ -119,14 +120,14 @@ fn test_a_block_cipher_round_trips_a_message() [io, ffi]
     let ctx = libcrypto.evp_cipher_ctx_new()
     test.assert(ctx != 0)
     let aes = libcrypto.evp_aes_256_cbc()
-    // The key and the vector are the zero bytes ptr.alloc left; this
-    // test is about the shape of the calls, not about secrecy.
+    // The key and the vector are the zero bytes ptr.alloc left.  This
+    // test is over the order of the calls and not over secrecy.
     test.assert(libcrypto.evp_encrypt_init_ex(ctx, aes, 0, key, iv) == 1)
     test.assert(libcrypto.evp_cipher_ctx_set_padding(ctx, 1) == 1)
     test.assert(libcrypto.evp_encrypt_update(ctx, cipher_text, n, plain, 14) == 1)
     let body = ptr.read_word(n)
     test.assert(libcrypto.evp_encrypt_final_ex(ctx, cipher_text + body, n) == 1)
-    // Padding takes fourteen bytes up to two whole blocks.
+    // Padding takes fourteen bytes up to one whole block of sixteen.
     let total = body + ptr.read_word(n)
     test.assert(total == 16)
     test.assert(libcrypto.evp_cipher_ctx_reset(ctx) == 1)
@@ -156,8 +157,8 @@ fn test_an_authenticated_cipher_takes_its_nonce_length_and_tag() [io, ffi]
     let n = ptr.alloc_word()
     let ctx = libcrypto.evp_cipher_ctx_new()
     let gcm = libcrypto.evp_aes_256_gcm()
-    // 9 is EVP_CTRL_AEAD_SET_IVLEN; twelve is the default and setting
-    // it explicitly is what a caller with another length would do.
+    // 9 is EVP_CTRL_AEAD_SET_IVLEN.  Twelve is the default, and a
+    // caller with another nonce length sets it the same way.
     test.assert(libcrypto.evp_encrypt_init_ex(ctx, gcm, 0, 0, 0) == 1)
     test.assert(libcrypto.evp_cipher_ctx_ctrl(ctx, 9, 12, 0) == 1)
     test.assert(libcrypto.evp_encrypt_init_ex(ctx, 0, 0, key, iv) == 1)
@@ -237,8 +238,8 @@ fn test_the_error_queue_fills_and_empties() [io, ffi]
     libcrypto.evp_cipher_ctx_free(ctx)
     ptr.free(buf)
 
-// `X509_free` releases a certificate reference, and this package has no
-// entry point that produces one — `SSL_get1_peer_certificate` in
+// `X509_free` releases a certificate reference, and this package has
+// no entry point that produces one.  `SSL_get1_peer_certificate` in
 // libssl-sys does.  Releasing the null address is allowed, and that is
 // the call this suite can make.
 @test

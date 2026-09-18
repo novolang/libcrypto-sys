@@ -5,6 +5,10 @@ is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.1 — 2026-09-18
+
+The documentation and comments in plain prose; no declaration changed.
+
 ## 0.1.0 — 2026-09-15
 
 The first release: forty-nine entry points of the OpenSSL libcrypto C
@@ -28,17 +32,9 @@ API, one `@ffi` declaration each, and no logic.
     `ERR_clear_error`.
   - The library: `CRYPTO_memcmp`, `OpenSSL_version`,
     `OpenSSL_version_num` and `X509_free`.
-- `tests/libcrypto_tests.nv` — twelve tests over the signatures. They
-  call the C library, so they need libcrypto installed. The digest
-  tests use the published vector for the message `"abc"`.
-
-### Not a `0.0.x` interface release
-
-An interface release is the shape whose every `pub fn` body is a
-`todo()`. Every `pub fn` here is an `@ffi` declaration with no body, so
-`novo pkg publish` reads the package as a release with bodies and
-refuses a `0.0.x` version for it. The first release of a bindings
-package is therefore `0.1.0`.
+- `tests/libcrypto_tests.nv` — twelve tests over the forty-nine entry
+  points. They call the C library, so they need libcrypto installed.
+  The digest tests use the published vector for the message `"abc"`.
 
 ### Named as missing
 

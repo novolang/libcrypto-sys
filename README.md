@@ -8,13 +8,12 @@ built from. The library's interface is documented in
 declares forty-nine of libcrypto's entry points to novo-lang, one
 declaration each.
 
-**Status: a binding, not a port.** Every function in this package is a
-declaration of a function in libcrypto. The package contains no logic
-of its own, and it does nothing without the C library installed. The
-forty-nine entry points cover message digests, symmetric ciphers, keyed
-message authentication, key derivation from a password, random bytes
-and the error queue; the section "What is not included" says what a
-program still cannot do with them alone.
+Every function here is a declaration of a function in libcrypto. The
+package contains no logic of its own, and it does nothing without the C
+library installed. The forty-nine entry points cover message digests,
+symmetric ciphers, keyed message authentication, key derivation from a
+password, random bytes and the error queue. The section "What is not
+included" says what a program still cannot do with them alone.
 
 ## What it is
 
@@ -85,7 +84,7 @@ The SHA-256 digest of a message, in one call:
 use libcrypto
 
 fn main() [io, ffi]
-    // A buffer is an address and a length; the caller owns both.
+    // A buffer is an address and a length, and the caller owns both.
     let input = ptr.alloc(32)
     ptr.write_bytes_buf(input, bytes.from_str("abc"))
     // EVP_MAX_MD_SIZE is 64, the length every digest fits in.
@@ -105,9 +104,10 @@ fn main() [io, ffi]
 ```
 
 The example is fenced as an illustration rather than a compiled block
-because `novo doc` compiles the blocks in documentation comments and not
-the ones in this file. The same calls, with the published digest of
-`"abc"` asserted against them, are in `tests/libcrypto_tests.nv`.
+because `novo doc` links a compiled block against libcrypto. Such a
+block fails on a machine where the C library is not installed. The same
+calls, with the published digest of `"abc"` asserted against them, are
+in `tests/libcrypto_tests.nv`.
 
 ## What the package contains
 
@@ -171,11 +171,12 @@ further up, and `ERR_get_error` in a loop that drains the queue.
    used. OpenSSL manual, `EVP_DecryptFinal_ex`.
 8. **A nonce may never be used twice with one key.** This applies to
    `EVP_aes_256_gcm` and `EVP_chacha20_poly1305`. Repeating one does
-   not merely repeat a ciphertext: it reveals the key that
+   not merely repeat a ciphertext. It reveals the key that
    authenticates every message under that key.
-9. **`RAND_bytes` answering 0 is not a buffer of random bytes.** Check
-   the answer. The generator can fail, and the buffer is then whatever
-   it was.
+9. **`RAND_bytes` answering anything but 1 is not a buffer of random
+   bytes.** Check the answer. It is 0 when the generator failed and -1
+   when the random method in use does not support the call, and the
+   buffer is then whatever it was.
 10. **Compare a MAC with `CRYPTO_memcmp`.** An ordinary byte-by-byte
     comparison stops at the first difference, and the time it took
     tells an attacker how much of a forged code was right.
@@ -211,9 +212,9 @@ public in every use here.
 
 ## What is not included
 
-- **The public key half.** `EVP_PKEY` and everything built on it — key
-  generation, signing, verification, key exchange, RSA, the elliptic
-  curves — is left out of the first release.
+- **The public key half.** `EVP_PKEY` and everything built on it is
+  absent. That is key generation, signing, verification, key exchange,
+  RSA and the elliptic curves. This release does not carry them.
 - **The X.509 certificate surface.** Parsing a certificate, reading its
   subject, its validity dates and its extensions, and building a
   verification chain are all absent. `X509_free` is here on its own,
@@ -222,8 +223,8 @@ public in every use here.
 - **`BIGNUM`.** The arbitrary-precision integers underneath the public
   key algorithms have no entry point here.
 - **The BIO abstraction.** `BIO_new`, `BIO_read`, `BIO_write` and their
-  neighbours are OpenSSL's own stream abstraction. They are left out of
-  the first release.
+  neighbours are OpenSSL's own stream abstraction. This release does not
+  carry them.
 - **Every entry point that takes a C function pointer.** A novo-lang
   function is not one.
 - **Every entry point that passes or returns a structure by value.**
@@ -253,8 +254,8 @@ or must produce the same bytes as an existing OpenSSL deployment.
 
 ## Test vectors
 
-`tests/libcrypto_tests.nv` holds twelve tests written against the
-signatures. They call the C library, so `novo test` needs libcrypto
+`tests/libcrypto_tests.nv` holds twelve tests over the forty-nine entry
+points. They call the C library, so `novo test` needs libcrypto
 installed and linkable:
 
 ```
@@ -274,20 +275,6 @@ AES-256-CBC and decrypts it back, and compares the result with
 compares the two. The rest assert each algorithm's own lengths, that
 the random generator is seeded and that the error queue fills and
 empties.
-
-## Implementation status
-
-| Group | State |
-| --- | --- |
-| Message digests | Complete for SHA-1, SHA-256, SHA-512 and MD5, and for anything `EVP_get_digestbyname` finds. |
-| Symmetric ciphers | Complete for AES-128-CBC, AES-256-CBC, AES-256-GCM and ChaCha20-Poly1305, and for anything `EVP_get_cipherbyname` finds. |
-| Authentication and derivation | Complete for HMAC and PBKDF2. |
-| Random bytes | Complete. |
-| Error queue | Complete. |
-| Library | Complete. |
-| Public key | Absent. Left out of the first release. |
-| X.509 | Absent apart from `X509_free`. |
-| BIO | Absent. Left out of the first release. |
 
 ## Licence
 
