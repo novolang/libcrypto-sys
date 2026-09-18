@@ -9,6 +9,21 @@ with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
 The documentation and comments in plain prose; no declaration changed.
 
+### Corrected against the OpenSSL 3.0 reference
+
+- `OpenSSL_version_num` answers `0x300000d0` for 3.0.13. The layout is
+  `0xMNN00PP0`.
+- `OpenSSL_version` selector 7 is `OPENSSL_FULL_VERSION_STRING` and 8
+  is `OPENSSL_MODULES_DIR`.
+- `EVP_MD_get0_name` answers the object short name for the static
+  digests, so `EVP_sha256` answers `"SHA256"`.
+- `EVP_CIPHER_get0_name` answers `"id-aes256-GCM"` for
+  `EVP_aes_256_gcm` and `"AES-256-CBC"` for `EVP_aes_256_cbc`.
+- `PKCS5_PBKDF2_HMAC` reads the password up to its terminator only for
+  a length of -1. Any other negative length answers 0.
+- `RAND_bytes` and `RAND_priv_bytes` answer -1 when the random method
+  in use does not support the call, so anything but 1 is a failure.
+
 ## 0.1.0 — 2026-09-15
 
 The first release: forty-nine entry points of the OpenSSL libcrypto C
